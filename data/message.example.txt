@@ -1,0 +1,1 @@
+Ola {{name}}, aqui e uma mensagem enviada com consentimento pelo bot.

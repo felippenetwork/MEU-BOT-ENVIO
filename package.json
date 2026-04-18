@@ -1,0 +1,26 @@
+{
+  "name": "whatsapp-optin-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Bot de notificacao para WhatsApp com Baileys, opt-in e controle de envio.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "start": "node index.js daemon",
+    "auth": "node index.js auth",
+    "send": "node index.js send",
+    "listen": "node index.js listen",
+    "labels:watch": "node index.js labels:watch",
+    "media:add": "node index.js media:add",
+    "media:list": "node index.js media:list"
+  },
+  "dependencies": {
+    "baileys": "^7.0.0-rc.9",
+    "csv-parse": "^5.5.6",
+    "dotenv": "^16.6.1",
+    "pino": "^9.11.0",
+    "qrcode-terminal": "^0.12.0"
+  }
+}

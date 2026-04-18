@@ -1,0 +1,14 @@
+node_modules/
+.env
+auth/
+logs/
+tmp/
+nohup.out
+data/funnel-state.json
+data/funnel-state.backup.json
+data/funnel-state.tmp.json
+data/message-cycle.json
+data/message-cycle-stage1.json
+data/message-cycle-stage2.json
+data/labels-discovered.json
+data/optouts.json

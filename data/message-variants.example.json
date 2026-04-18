@@ -1,0 +1,13 @@
+[
+  {
+    "text": "Ola {{name}}, aqui e uma mensagem enviada com consentimento pelo bot.",
+    "mediaName": "img-001"
+  },
+  {
+    "text": "Oi {{name}}, passando para compartilhar uma notificacao com voce.",
+    "mediaName": "img-002"
+  },
+  {
+    "text": "Ola {{name}}! Esta e mais uma variacao da mensagem automatica."
+  }
+]
