@@ -6,6 +6,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, "..");
 const DOWNLOAD_DIR = path.join(ROOT_DIR, "download");
+const RETRYABLE_FS_ERROR_CODES = new Set(["EBUSY", "ENOTEMPTY", "EPERM"]);
 
 function normalizeRelativePath(inputPath) {
   const normalized = path.normalize(String(inputPath || "").trim()).replace(/^([\\/])+/, "");
@@ -39,6 +40,61 @@ async function copyEntry(relativePath) {
   await copyFile(sourcePath, targetPath);
 }
 
+async function removePathWithRetry(targetPath, maxAttempts = 5) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await rm(targetPath, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      const isRetryable = RETRYABLE_FS_ERROR_CODES.has(error?.code);
+      if (!isRetryable || attempt === maxAttempts) {
+        throw error;
+      }
+
+      await new Promise((resolve) => {
+        setTimeout(resolve, attempt * 500);
+      });
+    }
+  }
+}
+
+async function clearDownloadDir() {
+  await mkdir(DOWNLOAD_DIR, { recursive: true });
+  const entries = await readdir(DOWNLOAD_DIR, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const targetPath = path.join(DOWNLOAD_DIR, entry.name);
+
+    if (entry.isDirectory()) {
+      await clearDirectoryContents(targetPath);
+      try {
+        await removePathWithRetry(targetPath);
+      } catch (error) {
+        if (!RETRYABLE_FS_ERROR_CODES.has(error?.code)) {
+          throw error;
+        }
+      }
+      continue;
+    }
+
+    await removePathWithRetry(targetPath);
+  }
+}
+
+async function clearDirectoryContents(dirPath) {
+  const entries = await readdir(dirPath, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const targetPath = path.join(dirPath, entry.name);
+
+    if (entry.isDirectory()) {
+      await clearDirectoryContents(targetPath);
+    }
+
+    await removePathWithRetry(targetPath);
+  }
+}
+
 async function main() {
   const requestedEntries = process.argv.slice(2).map(normalizeRelativePath);
 
@@ -48,7 +104,7 @@ async function main() {
     );
   }
 
-  await rm(DOWNLOAD_DIR, { recursive: true, force: true });
+  await clearDownloadDir();
   await mkdir(DOWNLOAD_DIR, { recursive: true });
 
   for (const relativePath of requestedEntries) {
