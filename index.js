@@ -1032,6 +1032,10 @@ async function ensureFile(filePath, contents) {
 }
 
 function extractText(message = {}) {
+  if (!message || typeof message !== "object") {
+    return "";
+  }
+
   if (message.conversation) {
     return message.conversation;
   }
