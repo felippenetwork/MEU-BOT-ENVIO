@@ -6,7 +6,9 @@ import path from "node:path";
 import makeWASocket, {
   DisconnectReason,
   fetchLatestBaileysVersion,
+  generateWAMessageFromContent,
   makeCacheableSignalKeyStore,
+  proto,
   useMultiFileAuthState
 } from "baileys";
 import { parse } from "csv-parse/sync";
@@ -25,6 +27,7 @@ const CONFIG = {
   appsScriptUrl: String(process.env.APPS_SCRIPT_URL || "").trim(),
   appsScriptToken: String(process.env.APPS_SCRIPT_TOKEN || "").trim(),
   appsScriptPollMs: parsePositiveInt(process.env.APPS_SCRIPT_POLL_MS, 60000),
+  appsScriptStageMode: normalizeStageMode(process.env.APPS_SCRIPT_STAGE_MODE || "stage2"),
   stage1VariantsFile: String(
     process.env.STAGE1_VARIANTS_FILE || "data/message-variants.abertura.json"
   ).trim(),
@@ -40,6 +43,25 @@ const CONFIG = {
   ).trim(),
   stage2DelayMs: parsePositiveInt(process.env.STAGE2_DELAY_MS, 10000),
   autoStage2AfterGreeting: parseBoolean(process.env.AUTO_STAGE2_AFTER_GREETING || "true"),
+  stage2UseInteractiveButtons: parseBoolean(
+    process.env.STAGE2_USE_INTERACTIVE_BUTTONS || "true"
+  ),
+  stage2ButtonLinkUrl: String(
+    process.env.STAGE2_BUTTON_LINK_URL ||
+      "https://chat.whatsapp.com/FG1hAPfo12e8AJOydKTnKs"
+  ).trim(),
+  stage2ButtonLinkText: String(
+    process.env.STAGE2_BUTTON_LINK_TEXT || "Participar Agora"
+  ).trim(),
+  stage2ButtonQuickReplyText: String(
+    process.env.STAGE2_BUTTON_QUICK_REPLY_TEXT || "Essa vou passar"
+  ).trim(),
+  stage2ButtonQuickReplyId: String(
+    process.env.STAGE2_BUTTON_QUICK_REPLY_ID || "stage2_skip_offer"
+  ).trim(),
+  stage2ButtonFooterText: String(
+    process.env.STAGE2_BUTTON_FOOTER_TEXT || "Rifas Clube do Churrasco"
+  ).trim(),
   defaultVariantsFile: String(process.env.DEFAULT_VARIANTS_FILE || "data/message-variants.oferta-tv.json").trim(),
   defaultMediaName: String(process.env.DEFAULT_MEDIA_NAME || "").trim(),
   timezone: process.env.TIMEZONE || "America/Sao_Paulo"
@@ -231,6 +253,10 @@ function parseBoolean(value) {
     .trim()
     .toLowerCase();
   return normalized === "true" || normalized === "1" || normalized === "sim";
+}
+
+function normalizeStageMode(value) {
+  return String(value || "").trim().toLowerCase() === "stage2" ? "stage2" : "stage1";
 }
 
 function parseOptIn(record) {
@@ -656,6 +682,9 @@ async function handleReplyFunnelMessages(socket, messages) {
         name: contactState.name || "cliente",
         phone: contactState.phone || jidToPhone(jid)
       });
+      const interactiveButtons = shouldUseStage2InteractiveButtons(selectedMediaAsset)
+        ? buildStage2InteractiveButtons(variant.id)
+        : null;
 
       await sleep(REPLY_REACTION_DELAY_MS);
 
@@ -685,7 +714,10 @@ async function handleReplyFunnelMessages(socket, messages) {
       await socket.addChatLabel(jid, CONFIG.stage2LabelId);
 
       try {
-        await socket.sendMessage(jid, buildPayload(selectedMediaAsset, text), {
+        await sendPreparedMessage(socket, jid, {
+          mediaAsset: selectedMediaAsset,
+          text,
+          interactiveButtons,
           quoted: message
         });
       } catch (sendError) {
@@ -896,6 +928,9 @@ async function sendStageTwoAfterDelay({
     stage2Flow.mediaCache
   );
   const text = formatMessage(variant.text, contact);
+  const interactiveButtons = shouldUseStage2InteractiveButtons(selectedMediaAsset)
+    ? buildStage2InteractiveButtons(variant.id)
+    : null;
   let removedStage1Label = false;
   let addedStage2Label = false;
 
@@ -918,7 +953,11 @@ async function sendStageTwoAfterDelay({
   }
 
   try {
-    await socket.sendMessage(jid, buildPayload(selectedMediaAsset, text));
+    await sendPreparedMessage(socket, jid, {
+      mediaAsset: selectedMediaAsset,
+      text,
+      interactiveButtons
+    });
   } catch (error) {
     if (addedStage2Label) {
       try {
@@ -994,6 +1033,29 @@ function extractText(message = {}) {
 
   if (message.extendedTextMessage?.text) {
     return message.extendedTextMessage.text;
+  }
+
+  if (message.buttonsResponseMessage?.selectedDisplayText) {
+    return message.buttonsResponseMessage.selectedDisplayText;
+  }
+
+  if (message.templateButtonReplyMessage?.selectedDisplayText) {
+    return message.templateButtonReplyMessage.selectedDisplayText;
+  }
+
+  if (message.interactiveResponseMessage?.body?.text) {
+    return message.interactiveResponseMessage.body.text;
+  }
+
+  const interactiveParamsJson =
+    message.interactiveResponseMessage?.nativeFlowResponseMessage?.paramsJson;
+  if (interactiveParamsJson) {
+    try {
+      const parsed = JSON.parse(interactiveParamsJson);
+      return parsed.display_text || parsed.id || parsed.title || "";
+    } catch {
+      return interactiveParamsJson;
+    }
   }
 
   return "";
@@ -1371,6 +1433,49 @@ function getGreeting() {
   return dayPeriod.charAt(0).toUpperCase() + dayPeriod.slice(1);
 }
 
+function getStage2ButtonEmojiSuffix(seed = 0) {
+  const emojiVariants = [
+    "\uD83D\uDD25\uD83C\uDF9F\uFE0F",
+    "\uD83E\uDD69\uD83C\uDF96\uFE0F",
+    "\uD83C\uDF56\uD83D\uDE80",
+    "\uD83C\uDF96\uFE0F\uD83D\uDD25",
+    "\uD83C\uDF96\uFE0F\uD83C\uDF89",
+    "\uD83C\uDF56\uD83D\uDE0E"
+  ];
+  return emojiVariants[Math.abs(Number(seed) || 0) % emojiVariants.length];
+}
+
+function shouldUseStage2InteractiveButtons(mediaAsset) {
+  return Boolean(
+    CONFIG.stage2UseInteractiveButtons &&
+      !mediaAsset &&
+      CONFIG.stage2ButtonLinkUrl &&
+      CONFIG.stage2ButtonLinkText &&
+      CONFIG.stage2ButtonQuickReplyText
+  );
+}
+
+function buildStage2InteractiveButtons(seed = 0) {
+  const linkLabel = `${CONFIG.stage2ButtonLinkText} ${getStage2ButtonEmojiSuffix(seed)}`.trim();
+  return [
+    {
+      name: "cta_url",
+      buttonParamsJson: JSON.stringify({
+        display_text: linkLabel,
+        url: CONFIG.stage2ButtonLinkUrl,
+        merchant_url: CONFIG.stage2ButtonLinkUrl
+      })
+    },
+    {
+      name: "quick_reply",
+      buttonParamsJson: JSON.stringify({
+        display_text: CONFIG.stage2ButtonQuickReplyText,
+        id: CONFIG.stage2ButtonQuickReplyId
+      })
+    }
+  ];
+}
+
 function getPeriodOfDayGreeting() {
   const now = new Date(new Date().toLocaleString("en-US", { timeZone: CONFIG.timezone }));
   const hour = now.getHours();
@@ -1496,6 +1601,7 @@ async function startDaemon() {
 
 function startAppsScriptPolling(socket) {
   let running = false;
+  const sendOnlyStageTwo = CONFIG.appsScriptStageMode === "stage2";
 
   const runCycle = async () => {
     if (running) {
@@ -1516,15 +1622,17 @@ function startAppsScriptPolling(socket) {
         socket,
         contacts: queuedContacts,
         messages: await loadMessages({
-          "variants-file": CONFIG.stage1VariantsFile
+          "variants-file": sendOnlyStageTwo
+            ? CONFIG.stage2VariantsFile
+            : CONFIG.stage1VariantsFile
         }),
         mediaAsset: null,
-        chatLabelId: CONFIG.stage1LabelId,
+        chatLabelId: sendOnlyStageTwo ? CONFIG.stage2LabelId : CONFIG.stage1LabelId,
         messageLabelId: CONFIG.messageLabelId,
         shouldUpdateAppsScript: true,
         ignoreContactLabel: true,
-        funnelStage: "stage1",
-        cycleFile: STAGE1_MESSAGE_CYCLE_FILE
+        funnelStage: sendOnlyStageTwo ? "stage2" : "stage1",
+        cycleFile: sendOnlyStageTwo ? STAGE2_MESSAGE_CYCLE_FILE : STAGE1_MESSAGE_CYCLE_FILE
       });
     } catch (error) {
       console.error("Erro ao sincronizar com Apps Script:", error.message || error);
@@ -1697,8 +1805,15 @@ async function processContacts({
       const variant = getNextVariant(cycleState);
       const selectedMediaAsset = await resolveVariantMediaAsset(variant, mediaAsset, mediaCache);
       const text = formatMessage(variant.text, contact);
-      const payload = buildPayload(selectedMediaAsset, text);
-      const sentMessage = await socket.sendMessage(jid, payload);
+      const interactiveButtons =
+        funnelStage === "stage2" && shouldUseStage2InteractiveButtons(selectedMediaAsset)
+          ? buildStage2InteractiveButtons(variant.id + index)
+          : null;
+      const sentMessage = await sendPreparedMessage(socket, jid, {
+        mediaAsset: selectedMediaAsset,
+        text,
+        interactiveButtons
+      });
       const appliedLabels = [];
       const contactChatLabelId = ignoreContactLabel
         ? getOptionalString(chatLabelId)
@@ -1904,6 +2019,66 @@ async function resolveVariantMediaAsset(variant, fallbackMediaAsset, mediaCache)
   }
 
   return mediaCache.get(mediaName);
+}
+
+async function sendInteractiveButtonsMessage(
+  socket,
+  jid,
+  { text, buttons, footerText = CONFIG.stage2ButtonFooterText, quoted } = {}
+) {
+  const messageContent = {
+    viewOnceMessage: {
+      message: {
+        interactiveMessage: proto.Message.InteractiveMessage.create({
+          body: proto.Message.InteractiveMessage.Body.create({
+            text: text || ""
+          }),
+          footer: proto.Message.InteractiveMessage.Footer.create({
+            text: footerText || "",
+            hasMediaAttachment: false
+          }),
+          nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
+            buttons: buttons || [],
+            messageParamsJson: "{}",
+            messageVersion: 1
+          })
+        })
+      }
+    }
+  };
+
+  const waMessage = generateWAMessageFromContent(jid, messageContent, {
+    userJid: socket.user?.id,
+    quoted
+  });
+
+  await socket.relayMessage(jid, waMessage.message, {
+    messageId: waMessage.key.id
+  });
+
+  return waMessage;
+}
+
+async function sendPreparedMessage(
+  socket,
+  jid,
+  { mediaAsset, text, quoted, interactiveButtons, footerText } = {}
+) {
+  if (interactiveButtons?.length && !mediaAsset) {
+    return sendInteractiveButtonsMessage(socket, jid, {
+      text,
+      buttons: interactiveButtons,
+      footerText,
+      quoted
+    });
+  }
+
+  const payload = buildPayload(mediaAsset, text);
+  if (quoted) {
+    return socket.sendMessage(jid, payload, { quoted });
+  }
+
+  return socket.sendMessage(jid, payload);
 }
 
 function buildPayload(mediaAsset, text) {

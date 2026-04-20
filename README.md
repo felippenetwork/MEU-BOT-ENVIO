@@ -60,13 +60,20 @@ Variaveis do `.env`:
 APPS_SCRIPT_URL=https://script.google.com/macros/s/SEU_SCRIPT/exec
 APPS_SCRIPT_TOKEN=seu_token_privado
 APPS_SCRIPT_POLL_MS=60000
+APPS_SCRIPT_STAGE_MODE=stage2
 STAGE1_VARIANTS_FILE=data/message-variants.abertura.json
 STAGE1_LABEL_ID=7
 STAGE2_VARIANTS_FILE=data/message-variants.oferta-tv.json
 STAGE2_LABEL_ID=8
 STAGE2_MEDIA_NAME=
 STAGE2_DELAY_MS=10000
-AUTO_STAGE2_AFTER_GREETING=true
+AUTO_STAGE2_AFTER_GREETING=false
+STAGE2_USE_INTERACTIVE_BUTTONS=true
+STAGE2_BUTTON_LINK_URL=https://chat.whatsapp.com/FG1hAPfo12e8AJOydKTnKs
+STAGE2_BUTTON_LINK_TEXT=Participar Agora
+STAGE2_BUTTON_QUICK_REPLY_TEXT=Essa vou passar
+STAGE2_BUTTON_QUICK_REPLY_ID=stage2_skip_offer
+STAGE2_BUTTON_FOOTER_TEXT=Rifas Clube do Churrasco
 MIN_DELAY_MS=40000
 MAX_DELAY_MS=300000
 DEFAULT_VARIANTS_FILE=data/message-variants.oferta-tv.json
@@ -110,6 +117,13 @@ Observacoes:
 - se quiser manter esse envio automatico ligado, deixe `AUTO_STAGE2_AFTER_GREETING=true`
 - a etapa 1 agora aceita `{{periododia}}`, que vira `bom dia`, `boa tarde` ou `boa noite` conforme o horario de Brasilia
 - se preferir a versao com inicial maiuscula, continue usando `{{saudacao}}`
+
+Modo atual para planilha / Apps Script:
+
+- com `APPS_SCRIPT_STAGE_MODE=stage2`, o bot envia somente a mensagem 2
+- essa mensagem 2 pode sair com saudacao no inicio e botoes interativos
+- o botao de link abre o grupo configurado em `STAGE2_BUTTON_LINK_URL`
+- o botao de resposta envia o texto definido em `STAGE2_BUTTON_QUICK_REPLY_TEXT`
 
 ## Contatos
 
