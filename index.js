@@ -1540,8 +1540,17 @@ async function createSocket({ printQrInTerminal = true } = {}) {
     }
 
     if (connection === "close") {
-      const shouldReconnect =
-        lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+      const statusCode = getDisconnectStatusCode(lastDisconnect?.error);
+      const pairingPending = isPairingPending(socket);
+
+      if (pairingPending) {
+        console.log(
+          "Conexao encerrada durante o pareamento. Se o codigo ja foi aceito no WhatsApp, reinicie o bot em alguns segundos. Se nao concluiu, tente novamente ou use QR Code."
+        );
+        return;
+      }
+
+      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
       if (shouldReconnect) {
         console.log("Conexao encerrada. Tentando reconectar...");
@@ -1655,6 +1664,14 @@ async function requestPairingCodeWithRetry(socket, phoneNumber, maxAttempts = 5)
   throw lastError;
 }
 
+function isPairingPending(socket) {
+  return Boolean(CONFIG.pairingPhoneNumber && !socket.authState?.creds?.registered);
+}
+
+function getDisconnectStatusCode(error) {
+  return error?.output?.statusCode ?? error?.data?.statusCode ?? null;
+}
+
 async function startAuthSession() {
   await requestPairingCodeIfNeeded(
     await createSocket({ printQrInTerminal: !CONFIG.pairingPhoneNumber })
@@ -1666,16 +1683,36 @@ async function startAuthSession() {
 async function startDaemon() {
   const socket = await createSocket({ printQrInTerminal: !CONFIG.pairingPhoneNumber });
   const pairingRequested = await requestPairingCodeIfNeeded(socket);
+  let appsScriptStarted = false;
+
+  const startAppsScriptIfReady = () => {
+    if (appsScriptStarted || !hasAppsScriptConfig()) {
+      return;
+    }
+
+    appsScriptStarted = true;
+    console.log(
+      `Modo Apps Script ativo. Consultando a planilha a cada ${CONFIG.appsScriptPollMs}ms.`
+    );
+    startAppsScriptPolling(socket);
+  };
+
+  socket.ev.on("connection.update", ({ connection }) => {
+    if (connection === "open") {
+      startAppsScriptIfReady();
+    }
+  });
 
   if (pairingRequested) {
     console.log("Aguardando confirmacao do pareamento no WhatsApp.");
   }
 
   if (hasAppsScriptConfig()) {
-    console.log(
-      `Modo Apps Script ativo. Consultando a planilha a cada ${CONFIG.appsScriptPollMs}ms.`
-    );
-    startAppsScriptPolling(socket);
+    if (socket.user) {
+      startAppsScriptIfReady();
+    } else if (!pairingRequested) {
+      console.log("Aguardando conexao com o WhatsApp para iniciar a leitura da planilha.");
+    }
   } else {
     console.log("Modo listener ativo. Configure APPS_SCRIPT_URL para sincronizar com Google Sheets.");
   }
