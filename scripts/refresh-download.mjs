@@ -1,4 +1,4 @@
-import { mkdir, rm, copyFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -7,65 +7,58 @@ const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, "..");
 const DOWNLOAD_DIR = path.join(ROOT_DIR, "download");
 
-const FILES_TO_COPY = [
-  ".env.example",
-  "DEPLOY_VORTEXUSA.md",
-  "README.md",
-  "index.js",
-  "package.json",
-  "package-lock.json",
-  "apps-script/Code.gs",
-  "data/message-variants.abertura.json",
-  "data/message-variants.oferta-tv.json"
-];
+function normalizeRelativePath(inputPath) {
+  const normalized = path.normalize(String(inputPath || "").trim()).replace(/^([\\/])+/, "");
+  const absolute = path.resolve(ROOT_DIR, normalized);
 
-const DOWNLOAD_README = `# Pasta de substituicao
+  if (!normalized) {
+    throw new Error("Informe pelo menos um arquivo ou pasta para copiar para download/.");
+  }
 
-Esta pasta foi gerada automaticamente pelo comando \`npm run download:refresh\`.
+  if (!absolute.startsWith(ROOT_DIR)) {
+    throw new Error(`Caminho fora do projeto nao permitido: ${inputPath}`);
+  }
 
-Use estes arquivos para substituir os correspondentes na hospedagem.
+  return normalized;
+}
 
-Arquivos incluidos:
-
-- \`index.js\`
-- \`package.json\`
-- \`package-lock.json\`
-- \`.env.example\`
-- \`README.md\`
-- \`DEPLOY_VORTEXUSA.md\`
-- \`apps-script/Code.gs\`
-- \`data/message-variants.abertura.json\`
-- \`data/message-variants.oferta-tv.json\`
-
-Observacoes:
-
-- nao foi incluida a pasta \`auth/\`, porque a autenticacao precisa continuar na hospedagem
-- nao foi incluido o arquivo \`.env\`, porque ele pode conter dados sensiveis
-- sempre que houver nova alteracao no projeto, rode \`npm run download:refresh\` para atualizar esta pasta
-`;
-
-async function copyRelativeFile(relativePath) {
+async function copyEntry(relativePath) {
   const sourcePath = path.join(ROOT_DIR, relativePath);
-  const targetPath = path.join(DOWNLOAD_DIR, relativePath);
+  const entryStats = await stat(sourcePath);
 
+  if (entryStats.isDirectory()) {
+    const childEntries = await readdir(sourcePath);
+    for (const childEntry of childEntries) {
+      await copyEntry(path.join(relativePath, childEntry));
+    }
+    return;
+  }
+
+  const targetPath = path.join(DOWNLOAD_DIR, relativePath);
   await mkdir(path.dirname(targetPath), { recursive: true });
   await copyFile(sourcePath, targetPath);
 }
 
 async function main() {
+  const requestedEntries = process.argv.slice(2).map(normalizeRelativePath);
+
+  if (requestedEntries.length === 0) {
+    throw new Error(
+      "Use `npm run download:refresh -- arquivo1 arquivo2` para copiar somente os arquivos atualizados."
+    );
+  }
+
   await rm(DOWNLOAD_DIR, { recursive: true, force: true });
   await mkdir(DOWNLOAD_DIR, { recursive: true });
 
-  for (const relativePath of FILES_TO_COPY) {
-    await copyRelativeFile(relativePath);
+  for (const relativePath of requestedEntries) {
+    await copyEntry(relativePath);
   }
 
-  await writeFile(path.join(DOWNLOAD_DIR, "LEIA-ME.md"), DOWNLOAD_README, "utf8");
-
-  console.log("Pasta download atualizada com sucesso.");
+  console.log("Pasta download atualizada somente com os arquivos solicitados.");
 }
 
 main().catch((error) => {
-  console.error("Falha ao atualizar a pasta download:", error);
+  console.error("Falha ao atualizar a pasta download:", error.message);
   process.exitCode = 1;
 });

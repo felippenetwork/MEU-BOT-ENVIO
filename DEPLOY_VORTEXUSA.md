@@ -3,15 +3,23 @@
 ## Arquivos para subir
 
 Se voce quiser substituir os arquivos manualmente na hospedagem, use a pasta `download/`.
-Ela traz uma copia organizada dos arquivos principais do bot para envio e substituicao.
+Ela agora guarda somente os arquivos atualizados que realmente precisam ser substituidos na hospedagem.
 
 Sempre que atualizar o projeto, rode:
 
 ```bash
-npm run download:refresh
+npm run download:refresh -- index.js
 ```
 
-Se preferir, compacte o conteudo da pasta `download/` e envie esse pacote para a hospedagem.
+Exemplos:
+
+```bash
+npm run download:refresh -- index.js
+npm run download:refresh -- index.js data/message-variants.oferta-tv.json
+npm run download:refresh -- apps-script/Code.gs
+```
+
+Depois disso, substitua na hospedagem somente os arquivos que aparecerem dentro de `download/`.
 
 ## Passos
 
