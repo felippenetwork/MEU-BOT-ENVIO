@@ -209,11 +209,15 @@ function normalizePhone(value) {
 
 function formatMessage(template, contact) {
   const nomeComEspaco = contact.name ? ` ${contact.name}` : "";
+  const greeting = getGreeting();
+  const dayPeriod = getPeriodOfDayGreeting();
   return template
     .replaceAll("{{name}}", contact.name || "cliente")
     .replaceAll("{{nome}}", nomeComEspaco)
     .replaceAll("{{phone}}", contact.phone || "")
-    .replaceAll("{{saudacao}}", getGreeting());
+    .replaceAll("{{saudacao}}", greeting)
+    .replaceAll("{{periododia}}", dayPeriod)
+    .replaceAll("{{periodo_do_dia}}", dayPeriod);
 }
 
 function sleep(ms) {
@@ -1363,11 +1367,16 @@ function markStageTwoSent(state, jid, inboundMessageId, variant, mediaAsset) {
 }
 
 function getGreeting() {
+  const dayPeriod = getPeriodOfDayGreeting();
+  return dayPeriod.charAt(0).toUpperCase() + dayPeriod.slice(1);
+}
+
+function getPeriodOfDayGreeting() {
   const now = new Date(new Date().toLocaleString("en-US", { timeZone: CONFIG.timezone }));
   const hour = now.getHours();
-  if (hour >= 5 && hour < 12) return "Bom dia";
-  if (hour >= 12 && hour < 18) return "Boa tarde";
-  return "Boa noite";
+  if (hour >= 5 && hour < 12) return "bom dia";
+  if (hour >= 12 && hour < 18) return "boa tarde";
+  return "boa noite";
 }
 
 async function createSocket({ printQrInTerminal = true } = {}) {

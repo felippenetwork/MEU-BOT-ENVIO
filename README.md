@@ -108,6 +108,8 @@ Observacoes:
 - por padrao, a etapa 2 sai automaticamente apos `10` segundos
 - voce pode ajustar esse tempo em `STAGE2_DELAY_MS`
 - se quiser manter esse envio automatico ligado, deixe `AUTO_STAGE2_AFTER_GREETING=true`
+- a etapa 1 agora aceita `{{periododia}}`, que vira `bom dia`, `boa tarde` ou `boa noite` conforme o horario de Brasilia
+- se preferir a versao com inicial maiuscula, continue usando `{{saudacao}}`
 
 ## Contatos
 
