@@ -38,6 +38,8 @@ const CONFIG = {
   stage2MediaName: String(
     process.env.STAGE2_MEDIA_NAME || process.env.DEFAULT_MEDIA_NAME || ""
   ).trim(),
+  stage2DelayMs: parsePositiveInt(process.env.STAGE2_DELAY_MS, 10000),
+  autoStage2AfterGreeting: parseBoolean(process.env.AUTO_STAGE2_AFTER_GREETING || "true"),
   defaultVariantsFile: String(process.env.DEFAULT_VARIANTS_FILE || "data/message-variants.oferta-tv.json").trim(),
   defaultMediaName: String(process.env.DEFAULT_MEDIA_NAME || "").trim(),
   timezone: process.env.TIMEZONE || "America/Sao_Paulo"
@@ -63,7 +65,6 @@ const MEDIA_MANIFEST_FILE = `${DATA_DIR}/media-manifest.json`;
 const STOP_KEYWORDS = new Set(["STOP", "SAIR", "CANCELAR", "REMOVER"]);
 const SUPPORTED_MEDIA_TYPES = new Set(["image", "video"]);
 const REPLY_REACTION_DELAY_MS = 10000;
-const REPLY_STAGE2_DELAY_MS = 10000;
 const REPLY_HEART_REACTION = "\u2764\uFE0F";
 const replyFlowLocks = new Set();
 let funnelStateWriteQueue = Promise.resolve();
@@ -569,6 +570,10 @@ async function watchOptOutKeywords(messages) {
 }
 
 async function handleReplyFunnelMessages(socket, messages) {
+  if (CONFIG.autoStage2AfterGreeting) {
+    return;
+  }
+
   if (!CONFIG.stage1LabelId || !CONFIG.stage2LabelId || !CONFIG.stage2VariantsFile) {
     return;
   }
@@ -663,7 +668,7 @@ async function handleReplyFunnelMessages(socket, messages) {
         );
       }
 
-      await sleep(REPLY_STAGE2_DELAY_MS);
+      await sleep(CONFIG.stage2DelayMs);
 
       try {
         await socket.removeChatLabel(jid, CONFIG.stage1LabelId);
@@ -839,6 +844,113 @@ async function saveMessageCycleState(cycleState, cycleFile = MESSAGE_CYCLE_FILE)
       2
     )
   );
+}
+
+async function createStageTwoFlow() {
+  if (!CONFIG.stage2VariantsFile || !CONFIG.stage2LabelId) {
+    return null;
+  }
+
+  const messages = await loadMessages({
+    "variants-file": CONFIG.stage2VariantsFile
+  });
+
+  if (messages.length === 0) {
+    return null;
+  }
+
+  return {
+    cycleState: await getMessageCycleState(messages, STAGE2_MESSAGE_CYCLE_FILE),
+    fallbackMediaAsset: await getMediaAssetByName(CONFIG.stage2MediaName),
+    mediaCache: new Map()
+  };
+}
+
+async function sendStageTwoAfterDelay({
+  socket,
+  jid,
+  contact,
+  stage2Flow,
+  funnelState,
+  funnelKey,
+  index,
+  totalContacts
+}) {
+  if (!stage2Flow) {
+    return null;
+  }
+
+  console.log(
+    `(${index + 1}/${totalContacts}) Aguardando ${Math.round(CONFIG.stage2DelayMs / 1000)}s para enviar a etapa 2 a ${contact.name || contact.phone}.`
+  );
+  await sleep(CONFIG.stage2DelayMs);
+
+  const variant = getNextVariant(stage2Flow.cycleState);
+  const selectedMediaAsset = await resolveVariantMediaAsset(
+    variant,
+    stage2Flow.fallbackMediaAsset,
+    stage2Flow.mediaCache
+  );
+  const text = formatMessage(variant.text, contact);
+  let removedStage1Label = false;
+  let addedStage2Label = false;
+
+  try {
+    await socket.removeChatLabel(jid, CONFIG.stage1LabelId);
+    removedStage1Label = true;
+  } catch (error) {
+    console.log(
+      `Nao foi possivel remover a etiqueta ${CONFIG.stage1LabelId} de ${contact.name || contact.phone}: ${error.message || error}`
+    );
+  }
+
+  try {
+    await socket.addChatLabel(jid, CONFIG.stage2LabelId);
+    addedStage2Label = true;
+  } catch (error) {
+    console.log(
+      `Nao foi possivel aplicar a etiqueta ${CONFIG.stage2LabelId} em ${contact.name || contact.phone}: ${error.message || error}`
+    );
+  }
+
+  try {
+    await socket.sendMessage(jid, buildPayload(selectedMediaAsset, text));
+  } catch (error) {
+    if (addedStage2Label) {
+      try {
+        await socket.removeChatLabel(jid, CONFIG.stage2LabelId);
+      } catch {}
+    }
+
+    if (removedStage1Label) {
+      try {
+        await socket.addChatLabel(jid, CONFIG.stage1LabelId);
+      } catch {}
+    }
+
+    throw error;
+  }
+
+  markStageTwoSent(funnelState, funnelKey, "", variant, selectedMediaAsset);
+  await saveMessageCycleState(stage2Flow.cycleState, STAGE2_MESSAGE_CYCLE_FILE);
+  await saveFunnelState(funnelState);
+
+  console.log(
+    `(${index + 1}/${totalContacts}) Etapa 2 enviada para ${contact.name || contact.phone} com variacao ${variant.id}.`
+  );
+
+  return {
+    sentAt: new Date().toISOString(),
+    variantId: variant.id,
+    variantText: variant.text,
+    media: selectedMediaAsset
+      ? {
+          name: selectedMediaAsset.name,
+          type: selectedMediaAsset.type,
+          fileName: selectedMediaAsset.fileName
+        }
+      : null
+  };
 }
 
 function peekNextMessageVariants(cycleState, count) {
@@ -1554,6 +1666,10 @@ async function processContacts({
   const labelMap = await getLabelMap();
   const mediaCache = new Map();
   const funnelState = funnelStage === "stage1" ? await getFunnelState() : null;
+  const autoStage2Flow =
+    funnelStage === "stage1" && CONFIG.autoStage2AfterGreeting
+      ? await createStageTwoFlow()
+      : null;
   let shouldSaveFunnelState = false;
 
   for (const [index, contact] of contacts.entries()) {
@@ -1598,10 +1714,24 @@ async function processContacts({
       }
 
       await saveMessageCycleState(cycleState, cycleFile);
+      let stageTwoResult = null;
       if (funnelState && contactChatLabelId === CONFIG.stage1LabelId) {
         const funnelKey = normalizeJidKey(jid) || jid;
         markStageOneAwaitingResponse(funnelState, funnelKey, contact, variant, contactChatLabelId);
         await saveFunnelState(funnelState);
+
+        if (autoStage2Flow) {
+          stageTwoResult = await sendStageTwoAfterDelay({
+            socket,
+            jid,
+            contact,
+            stage2Flow: autoStage2Flow,
+            funnelState,
+            funnelKey,
+            index,
+            totalContacts: contacts.length
+          });
+        }
       }
       sent.push({
         phone: contact.phone,
@@ -1617,7 +1747,8 @@ async function processContacts({
               fileName: selectedMediaAsset.fileName
             }
           : null,
-        appliedLabels
+        appliedLabels,
+        autoFollowUp: stageTwoResult
       });
 
       console.log(

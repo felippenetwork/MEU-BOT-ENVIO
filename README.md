@@ -65,6 +65,8 @@ STAGE1_LABEL_ID=7
 STAGE2_VARIANTS_FILE=data/message-variants.oferta-tv.json
 STAGE2_LABEL_ID=8
 STAGE2_MEDIA_NAME=
+STAGE2_DELAY_MS=10000
+AUTO_STAGE2_AFTER_GREETING=true
 MIN_DELAY_MS=40000
 MAX_DELAY_MS=300000
 DEFAULT_VARIANTS_FILE=data/message-variants.oferta-tv.json
@@ -85,7 +87,8 @@ O bot agora pode rodar o fluxo automatico abaixo:
 
 - etapa 1: envia uma abertura curta usando `data/message-variants.abertura.json`
 - depois do envio da etapa 1, adiciona a etiqueta `7`
-- quando o contato responder e ainda estiver aguardando resposta, o bot remove a etiqueta `7`
+- apos o envio da etapa 1, o bot aguarda `10` segundos
+- depois desses `10` segundos, o bot remove a etiqueta `7`
 - em seguida adiciona a etiqueta `8`
 - por fim envia a etapa 2 usando `data/message-variants.oferta-tv.json`
 
@@ -102,7 +105,9 @@ Observacoes:
 - a etapa 1 usa sempre a etiqueta `7`
 - a etapa 2 troca `7` por `8`
 - o bot salva o estado localmente, entao nao perde a etapa do contato se reiniciar
-- o gatilho da etapa 2 vale para qualquer resposta recebida do contato
+- por padrao, a etapa 2 sai automaticamente apos `10` segundos
+- voce pode ajustar esse tempo em `STAGE2_DELAY_MS`
+- se quiser manter esse envio automatico ligado, deixe `AUTO_STAGE2_AFTER_GREETING=true`
 
 ## Contatos
 
