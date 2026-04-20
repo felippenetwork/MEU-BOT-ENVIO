@@ -88,6 +88,8 @@ npm start
 
 Foi incluido um exemplo pronto em `apps-script/Code.gs`.
 
+No exemplo atual, o Apps Script ja esta apontado para uma planilha fixa via `SPREADSHEET_ID` e `SHEET_GID`, entao ele pode ler a aba correta mesmo quando o script nao estiver vinculado diretamente a essa planilha.
+
 ## Funil em 2 Etapas
 
 O bot agora pode rodar o fluxo automatico abaixo:

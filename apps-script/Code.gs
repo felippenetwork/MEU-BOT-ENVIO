@@ -1,3 +1,5 @@
+const SPREADSHEET_ID = '1mR8VUiUVGY59RWNd8aLG30TWPFSd8846vRCFfRrigw8';
+const SHEET_GID = 859951361;
 const SHEET_NAME = 'DISPARO';
 const TOKEN = 'bot-vortexusa-2026';
 const HEADERS = {
@@ -110,8 +112,24 @@ function updateRowStatus(rowId, status, note, sentAt) {
 }
 
 function getSheet() {
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const spreadsheet = getSpreadsheet();
+  const sheetById = SHEET_GID
+    ? spreadsheet.getSheets().find((sheet) => sheet.getSheetId() === SHEET_GID)
+    : null;
+
+  if (sheetById) {
+    return sheetById;
+  }
+
   return spreadsheet.getSheetByName(SHEET_NAME) || spreadsheet.insertSheet(SHEET_NAME);
+}
+
+function getSpreadsheet() {
+  if (SPREADSHEET_ID) {
+    return SpreadsheetApp.openById(SPREADSHEET_ID);
+  }
+
+  return SpreadsheetApp.getActiveSpreadsheet();
 }
 
 function getHeaderMap(headers) {
