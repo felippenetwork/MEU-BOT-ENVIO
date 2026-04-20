@@ -15,12 +15,14 @@ import { parse } from "csv-parse/sync";
 import pino from "pino";
 import qrcodeTerminal from "qrcode-terminal";
 
+const DEFAULT_COUNTRY_CODE = "55";
+
 const CONFIG = {
   botName: process.env.BOT_NAME || "MeuBot",
   minDelayMs: parsePositiveInt(process.env.MIN_DELAY_MS, 40000),
   maxDelayMs: parsePositiveInt(process.env.MAX_DELAY_MS, 300000),
   maxMessagesPerRun: parsePositiveInt(process.env.MAX_MESSAGES_PER_RUN, 30),
-  defaultCountryCode: "55",
+  defaultCountryCode: DEFAULT_COUNTRY_CODE,
   pairingPhoneNumber: normalizePhone(process.env.PAIRING_PHONE_NUMBER || ""),
   chatLabelId: String(process.env.CHAT_LABEL_ID || "").trim(),
   messageLabelId: String(process.env.MESSAGE_LABEL_ID || "").trim(),
@@ -218,12 +220,12 @@ function normalizePhone(value) {
     return "";
   }
 
-  if (digits.startsWith(CONFIG.defaultCountryCode)) {
+  if (digits.startsWith(DEFAULT_COUNTRY_CODE)) {
     return digits;
   }
 
   if (digits.length === 10 || digits.length === 11) {
-    return `${CONFIG.defaultCountryCode}${digits}`;
+    return `${DEFAULT_COUNTRY_CODE}${digits}`;
   }
 
   return digits;
