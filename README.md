@@ -89,6 +89,7 @@ npm start
 Foi incluido um exemplo pronto em `apps-script/Code.gs`.
 
 No exemplo atual, o Apps Script ja esta apontado para uma planilha fixa via `SPREADSHEET_ID` e `SHEET_GID`, entao ele pode ler a aba correta mesmo quando o script nao estiver vinculado diretamente a essa planilha.
+Esse script agora aceita cabecalhos como `NUMERO`, `NOME`, `ETIQUETA` e tambem reconhece variacoes equivalentes, como `NÚMERO`.
 
 ## Funil em 2 Etapas
 

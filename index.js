@@ -527,6 +527,11 @@ async function fetchAppsScriptQueue() {
   }
 
   const payload = await response.json();
+  if (payload && payload.ok === false) {
+    throw new Error(
+      `Apps Script respondeu com erro: ${payload.error || "erro desconhecido"}`
+    );
+  }
   const rows = Array.isArray(payload) ? payload : payload.rows;
 
   if (!Array.isArray(rows)) {
