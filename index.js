@@ -1584,19 +1584,31 @@ async function watchLabels() {
   console.log("Se nenhuma etiqueta aparecer, crie ou renomeie uma etiqueta no WhatsApp Business para forcar o evento.");
 }
 
-async function startAuthSession() {
-  const socket = await createSocket();
-
-  if (CONFIG.pairingPhoneNumber && !socket.authState?.creds?.registered) {
-    const code = await socket.requestPairingCode(CONFIG.pairingPhoneNumber);
-    console.log(`Codigo de pareamento para ${CONFIG.pairingPhoneNumber}: ${code}`);
+async function requestPairingCodeIfNeeded(socket) {
+  if (!CONFIG.pairingPhoneNumber || socket.authState?.creds?.registered) {
+    return false;
   }
+
+  const code = await socket.requestPairingCode(CONFIG.pairingPhoneNumber);
+  console.log(`Codigo de pareamento para ${CONFIG.pairingPhoneNumber}: ${code}`);
+  return true;
+}
+
+async function startAuthSession() {
+  await requestPairingCodeIfNeeded(
+    await createSocket({ printQrInTerminal: !CONFIG.pairingPhoneNumber })
+  );
 
   console.log("Sessao de autenticacao ativa. Pressione Ctrl+C quando terminar.");
 }
 
 async function startDaemon() {
-  const socket = await createSocket();
+  const socket = await createSocket({ printQrInTerminal: !CONFIG.pairingPhoneNumber });
+  const pairingRequested = await requestPairingCodeIfNeeded(socket);
+
+  if (pairingRequested) {
+    console.log("Aguardando confirmacao do pareamento no WhatsApp.");
+  }
 
   if (hasAppsScriptConfig()) {
     console.log(

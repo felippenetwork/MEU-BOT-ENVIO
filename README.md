@@ -33,6 +33,8 @@ npm run auth
 Se `PAIRING_PHONE_NUMBER` estiver definido no `.env`, o bot tenta gerar codigo de pareamento.
 Se nao estiver, ele mostra um QR Code no terminal.
 
+Em hospedagens onde voce nao consegue rodar `npm run auth`, preencha `PAIRING_PHONE_NUMBER` e use `npm start`: o bot tambem tenta mostrar o codigo de pareamento ao iniciar em modo daemon.
+
 ## Listener de descadastro
 
 Para registrar respostas como `STOP` e `SAIR` em `data/optouts.json`:
