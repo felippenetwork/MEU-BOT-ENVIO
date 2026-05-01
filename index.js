@@ -2178,18 +2178,39 @@ async function sendInteractiveButtonsMessage(
   return waMessage;
 }
 
+function buildInteractiveButtonsTextFallback(text = "") {
+  const normalizedText = String(text || "")
+    .replace(/um dos botoes aqui embaixo/gi, "o link logo abaixo")
+    .replace(/botoes aqui embaixo/gi, "link logo abaixo")
+    .trim();
+  const parts = [normalizedText];
+
+  if (CONFIG.stage2ButtonLinkUrl) {
+    parts.push(`Participar agora:\n${CONFIG.stage2ButtonLinkUrl}`);
+  }
+
+  if (CONFIG.stage2ButtonQuickReplyText) {
+    parts.push(`Se nao quiser participar, responda:\n${CONFIG.stage2ButtonQuickReplyText}`);
+  }
+
+  return parts.filter(Boolean).join("\n\n");
+}
+
 async function sendPreparedMessage(
   socket,
   jid,
   { mediaAsset, text, quoted, interactiveButtons, footerText } = {}
 ) {
   if (interactiveButtons?.length && !mediaAsset) {
-    return sendInteractiveButtonsMessage(socket, jid, {
-      text,
-      buttons: interactiveButtons,
-      footerText,
-      quoted
-    });
+    const fallbackPayload = {
+      text: buildInteractiveButtonsTextFallback(text)
+    };
+
+    if (quoted) {
+      return socket.sendMessage(jid, fallbackPayload, { quoted });
+    }
+
+    return socket.sendMessage(jid, fallbackPayload);
   }
 
   const payload = buildPayload(mediaAsset, text);
